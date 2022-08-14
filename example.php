@@ -7,7 +7,7 @@ echo '<pre>';
 /*Добавление строки*/
 var_dump($db->add('products', ['name' => 'Коробка', 'price' => 9999.9999, 'count' => 3,]));
 
-/*Добавление строки с папаметром по-умолчанию*/
+/*Добавление строки с параметром по-умолчанию*/
 var_dump($db->add('products', ['name' => 'Коробка', 'price' => 999]));
 
 /*Изменение строки с условием*/
@@ -32,7 +32,7 @@ var_dump($db->getOne('products', 'name, price'));
 var_dump($db->getOne('products', '*', ['count' => 3,]));
 var_dump($db->getOne('products', '*', [], ['count' => 'max',]));
 
-/*Выборка одной строк*/
+/*Выборка строк*/
 var_dump($db->get('products'));
 var_dump($db->get('products', 'name, price'));
 var_dump($db->get('products', '*', ['count' => 3,]));

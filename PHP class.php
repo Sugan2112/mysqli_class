@@ -490,7 +490,4 @@ class DB
     }
     return true;
   }
-
-  /********** Debug tools ***********/
-
 }
