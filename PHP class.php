@@ -24,7 +24,13 @@ class DB
   {
     $this->debug = [];
     $this->is_debug = $is_debug;
-    $this->db_connect();
+    try {
+      $this->db_connect();
+    }
+    catch (Exception $e) {
+       echo $e->getMessage();
+       exit;
+    }
   }
 
   function __destruct()
@@ -38,7 +44,8 @@ class DB
     mysqli_report(MYSQLI_REPORT_OFF);
     $this->db = @new mysqli($this->db_conn['hostname'], $this->db_conn['username'], $this->db_conn['password'], $this->db_conn['database'], $this->db_conn['port']);
     if ($this->db->connect_error) {
-      die("Connection failed: " . $this->db->connect_error);
+      throw new Exception("Connection failed: " . $this->db->connect_error);
+      return false;
     }
     $this->db->set_charset($this->db_conn['charset']);
   }
@@ -60,10 +67,16 @@ class DB
   */
   public function add(string $table, $params)
   {
-    if (self::is_multi_array($params)) {
-      die("DB object syntax error: In second argument of the \"add method\", the array must be not multidimensional");
+    try {
+      if (!is_array($params) || self::is_multi_array($params)) throw new Exception("DB object syntax error: In second argument of the \"add method\", the array must be not multidimensional");
+      $preparing_params = self::preparing_params('add', $params);
     }
-    extract(self::get_params('add', $params)); //Получение и систематизация параметров
+    catch (Exception $e) {
+      echo $e->getMessage();
+      return false;
+    }
+
+    extract($preparing_params); //Получение и систематизация параметров
 
     //Подготовка имен
     $names = implode(", ", $names);
@@ -79,7 +92,7 @@ class DB
       $debug_time = microtime(true);
     }
 
-    $qr_result = self::prepare_query('add', $query, $types, $data, $big_data); //Подготовка и выполнение запроса
+    $qr_result = self::getStmt_obj('add', $query, $types, $data, $big_data); //Подготовка и выполнение запроса
 
     //Debug
     if ($this->is_debug) {
@@ -113,7 +126,15 @@ class DB
   */
   public function update(string $table, array $params, string $where = '')
   {
-    extract(self::get_params('add', $params)); //Получение и систематизация параметров
+    try {
+      $preparing_params = self::preparing_params('add', $params);
+    }
+    catch (Exception $e) {
+      echo $e->getMessage();
+      return false;
+    }
+
+    extract($preparing_params); //Получение и систематизация параметров
 
     //Подготовка имен
     foreach ($names as $key => &$value) {
@@ -140,7 +161,7 @@ class DB
       $debug_time = microtime(true);
     }
 
-    $qr_result = self::prepare_query('update', $query, $types, $data, $big_data); //Подготовка и выполнение запроса
+    $qr_result = self::getStmt_obj('update', $query, $types, $data, $big_data); //Подготовка и выполнение запроса
 
     //Debug
     if ($this->is_debug) {
@@ -157,31 +178,34 @@ class DB
   */
   public function delete(string $table, string $where)
   {
-    if (!empty($where)) {
-      $query = "DELETE FROM `" . $table . "` WHERE " . $where ;
-      //Debug
-      if ($this->is_debug) {
-        $debug_time = microtime(true);
-      }
-      if ($stmt = $this->db->prepare($query)) {
-        if ($stmt->execute()) {
-          if ($stmt->affected_rows === 0) {
-            $stmt->close();
-            return false;
-          }
-          $result =  $stmt->affected_rows;
-          $stmt->close();
-          //Debug
-          if ($this->is_debug) {
-            self::db_debug($query, [], $debug_time);
-          }
-          return $result;
-        }
-        die("DB object error: \"delete method\" " . $stmt->error);
-      }
-      die("DB object error: \"delete method\" " . $this->db->error);
+    $query = "DELETE FROM `" . $table . "` WHERE " . $where ;
+
+    try {
+      if (empty($where)) throw new Exception("DB object syntax error: In second argument of the \"delete method\", empty value");
+      if (!$stmt = $this->db->prepare($query)) throw new Exception("DB object error: \"delete method\" " . $this->db->error);
+      if (!$stmt->execute()) throw new Exception("DB object error: \"delete method\" " . $stmt->error);
     }
-    die("DB object syntax error: In second argument of the \"delete method\", empty value");
+    catch (Exception $e) {
+      echo $e->getMessage();
+      return false;
+    }
+
+    //Debug
+    if ($this->is_debug) {
+      $debug_time = microtime(true);
+    }
+
+    if ($stmt->affected_rows === 0) {
+      $stmt->close();
+      return false;
+    }
+    $result =  $stmt->affected_rows;
+    $stmt->close();
+    //Debug
+    if ($this->is_debug) {
+      self::db_debug($query, [], $debug_time);
+    }
+    return $result;
   }
 
   /*
@@ -244,7 +268,15 @@ class DB
     }
 
     if (!empty($where)) {
-      extract(self::get_params('add', $where)); //Получение и систематизация параметров
+      try {
+        $preparing_params = self::preparing_params('add', $where);
+      }
+      catch (Exception $e) {
+        echo $e->getMessage();
+        return false;
+      }
+
+      extract($preparing_params); //Получение и систематизация параметров
 
       //Подготовка имен
       foreach ($names as $key => &$value) {
@@ -264,7 +296,7 @@ class DB
         $debug_time = microtime(true);
       }
 
-      $qr_result = self::prepare_query('get', $query, $types, $data, $big_data); //Подготовка и выполнение запроса
+      $qr_result = self::getStmt_obj('get', $query, $types, $data, $big_data); //Подготовка и выполнение запроса
       $result = $qr_result->get_result();
 
       //Debug
@@ -339,7 +371,7 @@ class DB
         $debug_time = microtime(true);
       }
 
-      $qr_result = self::prepare_query('query', $query, $types, $params, $big_data);
+      $qr_result = self::getStmt_obj('query', $query, $types, $params, $big_data);
       $result = $qr_result->get_result();
       $qr_result->close();
 
@@ -397,88 +429,96 @@ class DB
   /*
   * Получение названий столбцов, типа данных и значение
   */
-  private function get_params(string $method, array $params) {
-    if (is_array($params) && !empty($params)) {
-      $names = []; //Названия столбцов
-      $types = ''; //Типы данных
-      $data = []; //Данные
-      $big_data = []; //Большие данные
+  private function preparing_params(string $method, array $params) {
+    $names = []; //Названия столбцов
+    $types = ''; //Типы данных
+    $data = []; //Данные
+    $big_data = []; //Большие данные
 
-      //Получение и структуризация данных из массива $params, определение типов данных
-      foreach ($params as $key => $value) {
-        if (is_array($value) && count($value) !== 1) {
-          die("DB object syntax error: In second argument of the \"" . $method . " method\", more than two values in a nested array");
-        }
+    if (!is_array($params) || empty($params)) {
+      throw new Exception("DB object syntax error: The second argument of the \"" . $method . " method\" must be an array and not empty");
+      return false;
+    }
 
-        switch (gettype($value)) {
-          case 'integer':
-            $types .= 'i';
-            $data[] = $value;
-            $names[] = $key;
-            break;
-
-          case 'boolean':
-            $types .= 'i';
-            $data[] = $value;
-            $names[] = $key;
-            break;
-
-          case 'double':
-            $types .= 'd';
-            $data[] = $value;
-            $names[] = $key;
-            break;
-
-          //Предпологаем, что строки и данные вложеных массивов - превышают max. allowed packet size
-          case 'string':
-            $types .= 'b';
-            $data[] = NULL;
-            $names[] = $key;
-            $big_data[array_key_last($data)] = $value;
-            break;
-
-          case 'array':
-            $types .= 'b';
-            $data[] = NULL;
-            $names[] = preg_replace('%[^a-zа-я\d]%i', '', $key) . ' = ' . array_key_first($value);
-            $big_data[array_key_last($data)] = $value[array_key_first($value)];
-            break;
-
-          default:
-            die("DB object error: Invalid data type on second argument of the \"" . $method . " method\" in " . $key);
-            break;
-        }
+    //Получение и структуризация данных из массива $params, определение типов данных
+    foreach ($params as $key => $value) {
+      if (is_array($value) && count($value) !== 1) {
+        throw new Exception("DB object syntax error: In second argument of the \"" . $method . " method\", more than two values in a nested array");
+        return false;
       }
 
-      $result = [
-        'names' => $names,
-        'data' => $data,
-        'big_data' => $big_data,
-        'types' => $types,
-      ];
+      switch (gettype($value)) {
+        case 'integer':
+          $types .= 'i';
+          $data[] = $value;
+          $names[] = $key;
+          break;
 
-      return $result;
+        case 'boolean':
+          $types .= 'i';
+          $data[] = $value;
+          $names[] = $key;
+          break;
+
+        case 'double':
+          $types .= 'd';
+          $data[] = $value;
+          $names[] = $key;
+          break;
+
+        //Предпологаем, что строки и данные вложеных массивов - превышают max. allowed packet size
+        case 'string':
+          $types .= 'b';
+          $data[] = NULL;
+          $names[] = $key;
+          $big_data[array_key_last($data)] = $value;
+          break;
+
+        case 'array':
+          $types .= 'b';
+          $data[] = NULL;
+          $names[] = preg_replace('%[^a-zа-я\d]%i', '', $key) . ' = ' . array_key_first($value);
+          $big_data[array_key_last($data)] = $value[array_key_first($value)];
+          break;
+
+        default:
+          throw new Exception("DB object error: Invalid data type on second argument of the \"" . $method . " method\" in " . $key);
+          return false;
+          break;
+      }
     }
-    die("DB object syntax error: The second argument of the \"" . $method . " method\" must be an array and not empty");
+
+    $result = [
+      'names' => $names,
+      'data' => $data,
+      'big_data' => $big_data,
+      'types' => $types,
+    ];
+
+    return $result;
   }
 
   /*
   *Подготовка запроса
   */
-  private function prepare_query(string $method, string $query, string $types, array $data, array $big_data) {
-    if ($stmt = $this->db->prepare($query)) {
-      if ($stmt->bind_param($types, ...$data)) {
-        //Обработка данных при превышении max. allowed packet size
-        foreach ($big_data as $key => $value) {
-          $stmt->send_long_data($key, $value);
-        }
-        if ($stmt->execute()) {
-          return $stmt;
-        }
+  private function getStmt_obj(string $method, string $query, string $types, array $data, array $big_data) {
+    try {
+      if (!$stmt = $this->db->prepare($query)) throw new Exception("DB object error in \"" . $method . " method\": " . $stmt->error);
+      if (!$stmt->bind_param($types, ...$data)) throw new Exception("DB object error in \"" . $method . " method\": " . $stmt->error);
+
+      //Обработка данных при превышении max. allowed packet size
+      foreach ($big_data as $key => $value) {
+        $stmt->send_long_data($key, $value);
       }
-      die("DB object error in \"" . $method . " method\": " . $stmt->error);
+      
+      if (!$stmt->execute()) throw new Exception("DB object error in \"" . $method . " method\": " . $this->db->error);
+
+      return $stmt;
     }
-    die("DB object error in \"" . $method . " method\": " . $this->db->error);
+    catch (Exception $e) {
+      echo $e->getMessage();
+      return false;
+    }
   }
 
   /*
